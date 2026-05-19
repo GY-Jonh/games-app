@@ -1,0 +1,418 @@
+================================================================================
+  Gomoku Together - 完整业务逻辑分析报告
+  日期: 2026-05-17
+  分析范围: 全部 20+ 源文件
+================================================================================
+
+目次:
+  1. 设备发现
+  2. 邀请流程
+  3. 游戏对局
+  4. 游戏结束
+  5. 返回大厅
+  6. 架构评估
+  7. 已修复问题回顾
+
+================================================================================
+一、设备发现
+================================================================================
+
+流程:
+  设备A/B同时启动
+    → WebSocketServer.bind(anyIPv4, 0)    // 随机端口
+    → mDNS: RawDatagramSocket 绑定 55555
+    → 加入组播组 239.255.0.1
+    → 每 5 秒广播 announce(device_id, name, port, platform)
+    → 收到非自身 announce → 添加到在线列表
+    → 每 5 秒清理 10 秒未更新的设备
+
+[安全]   忽略自身 announcement (通过 device_id 匹配)       ✓
+[正确]   广播间隔 5s, 过期 10s, 清理间隔 5s               ✓
+
+潜在问题:
+  ├── UDP 组播依赖路由器: 企业/公共 WiFi 可能隔离
+  │    → 两台手机永远看不到对方
+  │    → UI 显示 "正在搜索..." 无超时提示
+  │    → 建议: 添加 "网络检查" 功能或提示
+  │
+  └── 过期清除有 10-15s 延迟
+      → 关闭 WiFi 后设备仍可见
+      → 用户可能点击离线设备的 "邀请" 按钮
+      → 此时 connectToPeer 会因 TCP 超时而卡住（见问题2）
+
+================================================================================
+二、邀请流程
+================================================================================
+
+完整时序:
+
+  发起方                              接收方
+    │                                   │
+    ├─ 点击 "邀请"                       │
+    ├─ sendInvite(peerId, name)          │
+    │   → toPeerId, toPeerName 赋值      │
+    │   → invitationState = outgoing     │
+    ├─ connectToPeer(ip, port)           │
+    │   ├─ 断开旧 client                 │
+    │   ├─ 新建 WebSocketClient          │
+    │   ├─ WebSocket.connect(ws://)      │
+    │   │                                ├─ HttpServer 接受连接
+    │   │                                ├─ _webSocket = ws  (存储)
+    │   │                                ├─ ws.listen(onData...)
+    │   ├─ success=true                  │
+    │   ├─ send(peer_info)               │  (未处理, 静默丢弃)
+    │   ├─ send(game_invite) ──────────→ │
+    │   │                                ├─ _handleMessage:
+    │   │                                │   receiveInvite(senderId, name)
+    │   │                                │   → fromPeerId, fromPeerName 赋值
+    │   │                                │   → invitationState = incoming
+    │   │                                ├─ 显示 IncomingInvitationSheet
+    │   │                                │   "XXX 邀请你玩游戏"
+    │   │                                │
+    │   │                                ├─ 用户点击 "接受"
+    │   │                                ├─ send(invite_accepted {
+    │   │                                │     yourColor: 'black' // 发起方执黑
+    │   │                                │   })
+    │   │                                ├─ invitationState = accepted
+    │  ←───────────────────── invite_accepted
+    │   │                                ├─ startGame(白棋, fromPeerName) ✓
+    │   │                                ├─ navigateToGame()
+    │   ├─ invitationState = accepted    │   → opponentName = fromPeerName ✓
+    │   ├─ startGame(黑棋, toPeerName) ✓ │
+    │   ├─ navigateToGame()              │
+    │   │  → opponentName = fromPeerName │
+    │   │  → fromPeerName is NULL!       │
+    │   │  → 显示 "对手" ← 错误!         │
+    │                                    │
+    │                                    │ 接收方显示: "XXX" (正确)
+    │  发起方显示:     "对手" (错误!)      │
+
+--------------------------------------------------------------------------------
+🔴 问题1: 邀请方显示 "对手" 而非真实名称
+--------------------------------------------------------------------------------
+
+文件:   lobby_screen.dart:119-121
+方法:   _navigateToGame()
+代码:   final opponentName =
+            ref.read(invitationStateProvider.notifier).fromPeerName ?? '对手';
+
+根因:
+  InvitationNotifier 区分两个方向:
+    - fromPeerId / fromPeerName: receiveInvite() 设置 (仅接收方有)
+    - toPeerId   / toPeerName:   sendInvite() 设置 (仅发起方有)
+
+  发起方路径: sendInvite() → toPeerName 有值, fromPeerName 为 null
+  接收方路径: receiveInvite() → fromPeerName 有值
+
+  _navigateToGame() 只检查 fromPeerName, 发起方永远走到 ?? '对手'
+
+影响:
+  - 发起方进入游戏后, AppBar 标题显示 "对手"
+  - 局内 GameInfoBar 中 opponentName 也显示 "对手"
+  - 接收方显示正确名称
+
+修复方案:
+  final opponentName =
+      ref.read(invitationStateProvider.notifier).fromPeerName ??
+      ref.read(invitationStateProvider.notifier).toPeerName ??
+      '对手';
+
+--------------------------------------------------------------------------------
+🟡 问题2: WebSocket 连接无超时
+--------------------------------------------------------------------------------
+
+文件:   websocket_client.dart:21
+代码:   _webSocket = await WebSocket.connect('ws://$host:$port');
+
+风险:
+  - Dart/Flutter 的 WebSocket.connect 默认使用 Socket.connect
+  - 系统 TCP 超时通常为 20-120 秒 (平台相关)
+  - 当对端离线(但仍显示在列表)时, 用户点击邀请会等待 20s+
+  - 期间无任何进度提示, 只有 "正在邀请 XXX..." 转圈
+
+修复建议:
+  _webSocket = await WebSocket.connect('ws://$host:$port')
+      .timeout(const Duration(seconds: 10));
+  // 在 catch 中处理 TimeoutException
+
+--------------------------------------------------------------------------------
+🟡 问题3: 取消邀请提示可能被遮挡
+--------------------------------------------------------------------------------
+
+文件:   lobby_screen.dart:92-94
+代码:   ref.read(invitationStateProvider.notifier).reset();
+        _showSnackBar('对方取消了邀请');
+
+问题:
+  - 当用户在看邀请弹窗时, SnackBar 在底部出现
+  - IncomingInvitationSheet 作为 bottomSheet 占据底部空间
+  - SnackBar 可能与 bottomSheet 重叠, 不易察觉
+
+建议: 改为居中 Toast 或 Dialog 提示。
+
+================================================================================
+三、游戏对局
+================================================================================
+
+正常流程:
+
+  黑方(发起方)                        白方(接收方)
+    │                                   │
+    ├─ isMyTurn = true                   ├─ isMyTurn = false
+    │                                   │
+    ├─ 点击交叉点                         │
+    ├─ isValidMove(row, col)             │
+    ├─ placeStone(row, col)              │
+    │   → engine 更新                    │
+    │   → state 更新 (含移步记录)         │
+    ├─ 发送 game_move(row, col, stone)   │
+    │   stone: 1=黑, 2=白               │
+    ├─ 检查 status                       │
+    │   if won/draw → 发送 game_over     │
+    │                                   │
+    │                         game_move →
+    │                                   ├─ receiveMove(row, col, stone)
+    │                                   │   → engine.placeStone
+    │                                   │   → state 更新
+    │                                   ├─ isMyTurn = true
+    │                                   │
+    │        ← game_move (对方落子)      │
+    ├─ receiveMove(row, col, stone)      ├─ 点击落子...
+    │                                   │
+    │           ...循环...               │
+
+正确性验证:
+
+  [消息协议] game_move.payload.stone: 1=黑, 2=白
+    - 发送: gameState.myStone == Stone.black ? 1 : 2
+    - 接收: payload['stone'] == 1 ? Stone.black : Stone.white
+    - Stone.empty=0, black=1, white=2    ✓
+
+  [轮次控制] isMyTurn = (myStone == currentTurn)
+    - 每次落子后引擎切换 currentTurn     ✓
+    - 非自己回合时 onTap 提前 return     ✓
+
+  [引擎判定] _checkWin 四方向 O(1) 扫描
+    - 方向: (0,1)水平, (1,0)垂直, (1,1)正斜, (1,-1)反斜
+    - 从落子点向两边各数 <winStreak(5) 步
+    - 判定准确                           ✓
+
+  [平局检测] _moveCount >= 15*15 = 225  ✓
+
+  [坐标计算] (修复后) 使用 RenderBox 尺寸
+    - GestureDetector 的 localPosition    ✓
+    - 与 CustomPainter 使用同一尺寸源    ✓
+
+--------------------------------------------------------------------------------
+🟡 问题5: 非自己回合时点击棋盘无反馈
+--------------------------------------------------------------------------------
+
+文件:   game_board_widget.dart:23
+代码:   if (!isMyTurn || onTap == null) return;
+
+问题:
+  - 静默忽略点击, 用户不知道为什么不响应
+  - 新手玩家可能困惑
+
+建议: 添加震动或闪烁效果。
+
+================================================================================
+四、游戏结束
+================================================================================
+
+场景A: 正常胜利/平局
+
+  落子方:
+    placeStone() 返回 true
+    → status = won (或 draw)
+    → 发送 game_move → 发送 game_over(win/draw)
+
+  对手:
+    收到 game_move → receiveMove → status = lost (或 draw)
+    收到 game_over → 'win'/'draw' 忽略 (状态已更新)
+
+   ✅ 此路径正常
+
+场景B: 强行退出
+
+  退出方:
+    点击返回 → _showExitConfirm
+    → 用户确认 → 发送 game_over(quit)
+    → resetGame → Navigator.pop
+
+  对手:
+    收到 game_over(quit) → endGame → disconnected
+    → GameOverDialog 显示 "连接断开"
+
+   ✅ 此路径正常
+
+场景C: 连接断开
+
+  服务端检测:
+    WebSocket.onDone/onError
+    → _disconnectController.add
+    → connection_manager 监听
+    → 发送 connection_lost
+
+  客户端检测:
+    WebSocket.onDone/onError
+    → _connectionStateController.add(false)
+    → connection_manager 监听
+    → 发送 connection_lost
+
+  lobby 处理 connection_lost:
+    if (status == playing) → endGame
+    else → SnackBar
+    → reset invitation
+
+   ✅ 此路径正常
+
+场景D: 断线重连
+
+  无重连机制:
+    → 直接结束游戏, 显示 "连接断开"
+    → 无重试/重连
+
+  可接受 (休闲游戏), 但弱网环境体验差
+
+--------------------------------------------------------------------------------
+🔴 问题6: "再来一局" 按钮无效
+--------------------------------------------------------------------------------
+
+文件:   game_screen.dart:120-122
+代码:   onRematch: () {
+          ref.read(gameStateProvider.notifier).resetGame();
+          // TODO: send rematch request
+        },
+
+问题:
+  - 点击后只 resetGame() → 重置本地引擎
+  - 不发送任何消息给对手
+  - 对手状态不变 (仍显示游戏结束)
+  - 双方状态立刻不同步
+
+影响:
+  - 本地: 棋盘清空, status = waiting, myStone = null
+  - 对手: 仍然是游戏结束界面
+  - 此时如果对手点击任何按钮或落子, 状态会错乱
+
+建议方案A: 实现完整重开协议
+  1. 发送 rematch_request 给对方
+  2. 对方收到后弹窗询问
+  3. 双方都同意后重置游戏引擎
+  4. 决定谁执黑 (交替或原样)
+
+建议方案B: 暂时隐藏按钮
+  - 注释掉 onRematch, 或把按钮设 disabled
+  - 文本改为 "敬请期待"
+
+--------------------------------------------------------------------------------
+🟡 问题7: 退出游戏后 WebSocket 未关闭
+--------------------------------------------------------------------------------
+
+涉及路径:
+
+  路径1: _showExitConfirm → 发送 game_over(quit) → resetGame → pop
+  路径2: GameOverDialog.onQuit → resetGame → pop
+  路径3: 系统返回键 (PopScope)
+
+  以上均未调用 _connectionManager.disconnect()
+
+影响:
+  - 旧 WebSocket 连接持续打开
+  - 残留的 game_move 消息可能被 lobby 处理
+  - 在对方也退出/断线前, 连接一直存在
+
+特别风险: resetGame 后残留 game_move 抵达
+  receiveMove → engine.placeStone(引擎已重置!)
+  → 石头被放置在空棋盘上
+  → 状态被设置为 playing
+  → 出现 "幽灵对局"
+
+实际上此风险较低 (消息在 game_over 前已处理完毕),
+但仍应在退出时主动 disconnect。
+
+--------------------------------------------------------------------------------
+🟡 问题9: receiveMove 不检查游戏状态
+--------------------------------------------------------------------------------
+
+文件:   game_providers.dart:102-138
+代码:   void receiveMove(int row, int col, Stone stone) {
+          _engine.placeStone(row, col, stone);  // 可能返回 null
+          if (_engine.isGameOver) { ... }       // 继续执行
+        }
+
+问题:
+  - placeStone 返回 null 时 (游戏已结束/无效走子)
+  - receiveMove 不检查返回值, 继续使用 engine 状态
+  - 如果引擎已 reset, 会错误地放置棋子
+
+修复建议: 添加返回值检查
+  final result = _engine.placeStone(row, col, stone);
+  if (result == null) return;  // 游戏已结束, 忽略
+
+================================================================================
+五、返回大厅后的状态
+================================================================================
+
+流程:
+  游戏结束 → pop → lobby_screen 的 Navigator.push().then()
+  → reset invitation state
+  → reset connection status
+
+当前状态:
+  连接:   WebSocket 保持开放 (问题7)
+  邀请:   none (reset)
+  游戏:   initial (reset)
+  设备:   保留之前发现的 (通过心跳刷新)
+
+如果用户再次发起邀请:
+  connectToPeer 会先断开旧 client (BUG#5 修复)  ✓
+  但旧 server._webSocket 仍指向上一局对手
+  新的 WebSocket 连接会覆盖 _webSocket
+  旧连接被 GC 回收
+  安全性: 可接受
+
+================================================================================
+六、架构评估总结
+================================================================================
+
+严重性分类:
+  🔴 严重 (影响功能正确性): 2个
+  🟡 中等 (影响用户体验):   5个 (含已修复3个)
+  🟢 轻微:                  2个
+
+🔴 必须修复:
+  [1] 邀请方显示 "对手" 而非真实名称
+  [6] "再来一局" 按钮无效 (建议隐藏)
+
+🟡 建议修复:
+  [2] WebSocket 连接无超时
+  [3] 取消邀请提示被遮挡
+  [5] 非回合点击无反馈
+  [7] 退出未断连
+  [9] receiveMove 缺少状态保护
+
+🟢 可忽略:
+  - UDP 组播网络依赖
+  - 过期设备清除延迟
+
+================================================================================
+七、已修复问题回顾 (本轮会话)
+================================================================================
+
+BUG #3  取消邀请发送 invite_cancelled        → lobby_screen.dart:267-275    ✓
+BUG #4  游戏结束时发送 game_over             → game_screen.dart:82-99       ✓
+        退出确认发送 game_over               → game_screen.dart:147-153     ✓
+        lobby 处理 quit 原因                 → lobby_screen.dart:100-106    ✓
+BUG #5  连接前断开旧 WebSocket               → connection_manager.dart:46   ✓
+BUG #9  服务端断线检测                       → websocket_server.dart:13-14  ✓
+        客户端断线检测                       → connection_manager.dart:57-67✓
+        lobby 处理 connection_lost           → lobby_screen.dart:107-116    ✓
+Issue#6 坐标计算改用 RenderBox               → game_board_widget.dart:24-26 ✓
+Issue#10 GameOverDialog 改为底部弹出式       → game_over_dialog.dart        ✓
+UX #11  "第 0 手" 改为 "游戏开始"            → game_info_bar.dart:54        ✓
+UX #12  白子高亮透明度 0.6→0.9               → game_board_widget.dart:135   ✓
+
+================================================================================
+EOF

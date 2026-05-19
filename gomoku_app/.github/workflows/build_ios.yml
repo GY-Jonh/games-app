@@ -1,0 +1,74 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 使用 JDK 17（Android 已装，但 macOS runner 默认是 Java 21，无需额外配置）
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          cache: true
+
+      # 国内镜像（如果 GitHub Actions Runner 在海外则不需要）
+      # - run: |
+      #     echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> $GITHUB_ENV
+      #     echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> $GITHUB_ENV
+
+      - name: 获取依赖
+        run: flutter pub get
+
+      - name: 安装 CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update 2>/dev/null || echo "CocoaPods 跳过"
+
+      - name: 构建 iOS (${{ inputs.build_type || 'release' }})
+        run: |
+          if [ "${{ inputs.build_type || 'release' }}" = "release" ]; then
+            flutter build ios --release --no-codesign
+          else
+            flutter build ios --debug --no-codesign
+          fi
+
+      - name: 打包 IPA
+        run: |
+          IOS_BUILD_DIR="build/ios/iphoneos"
+          if [ ! -d "$IOS_BUILD_DIR/Runner.app" ]; then
+            echo "错误: Runner.app 未找到"
+            ls -la build/ios/
+            exit 1
+          fi
+          mkdir -p "$IOS_BUILD_DIR/Payload"
+          cp -r "$IOS_BUILD_DIR/Runner.app" "$IOS_BUILD_DIR/Payload/"
+          cd "$IOS_BUILD_DIR"
+          zip -r "$RUNNER_TEMP/gomoku_together.ipa" Payload/
+          cd "$GITHUB_WORKSPACE"
+          echo "IPA 路径: $RUNNER_TEMP/gomoku_together.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gomoku_together-ios-${{ inputs.build_type || 'release' }}
+          path: ${{ runner.temp }}/gomoku_together.ipa
+          compression-level: 9
+
+      - name: 上传 .app（备选）
+        uses: actions/upload-artifact@v4
+        with:
+          name: Runner-app-${{ inputs.build_type || 'release' }}
+          path: build/ios/iphoneos/Runner.app
+          compression-level: 9
