@@ -6,3 +6,6 @@
 *.ipa
 *.app
 build/
+
+# Generated test images
+vibe_images/

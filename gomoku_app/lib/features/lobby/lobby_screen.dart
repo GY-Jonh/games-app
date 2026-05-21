@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gomoku_app/core/constants/app_constants.dart';
 import 'package:gomoku_app/core/constants/game_constants.dart';
+import 'package:gomoku_app/core/game_framework/game_definition.dart';
 import 'package:gomoku_app/core/game_framework/game_handler.dart';
 import 'package:gomoku_app/core/game_framework/game_registry.dart';
 import 'package:gomoku_app/core/theme/app_theme.dart';
@@ -134,6 +135,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         // 委托给游戏 handler
         _activeHandler?.handleConnectionLost();
         break;
+
+      default:
+        // 游戏专用消息（spot_diff_* 等）路由给 handler
+        _activeHandler?.handleMessage(message);
+        break;
     }
   }
 
@@ -218,6 +224,9 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
             isServerRunning: true,
             onEditName: () => _showEditNameDialog(),
           ),
+          // 单人游戏专区
+          _buildSoloSection(),
+          // 在线玩家区域
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -440,6 +449,85 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
         ),
       ),
     );
+  }
+
+  /// 单人模式专区
+  Widget _buildSoloSection() {
+    final soloGames = _getSoloGames();
+    if (soloGames.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '单人游戏',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...soloGames.map(
+            (game) => Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                leading: Icon(game.icon, color: AppTheme.primaryColor),
+                title: Text(
+                  game.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  game.subtitle,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                trailing: const Icon(Icons.play_arrow, color: AppTheme.primaryColor),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                onTap: () => _startSoloGame(game.id),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 返回支持单人模式的游戏
+  List<GameDefinition> _getSoloGames() {
+    const soloGameIds = {'spot_diff', 'lights_out'};
+    return GameRegistry.getAll().where((g) => soloGameIds.contains(g.id)).toList();
+  }
+
+  /// 启动单人游戏
+  void _startSoloGame(String gameId) {
+    final handler = GameRegistry.createHandler(
+      gameId,
+      ref,
+      (_) {}, // 单人模式：发送消息为空操作
+    );
+    _activeHandler = handler;
+    handler.initGame(
+      myPlayerIndex: 0,
+      opponentName: '', // 空 = 单人模式
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => handler.buildScreen(
+          opponentName: '',
+          onSendMessage: (_) {},
+        ),
+      ),
+    ).then((_) {
+      _activeHandler?.dispose();
+      _activeHandler = null;
+    });
   }
 
   void _showEditNameDialog() {
