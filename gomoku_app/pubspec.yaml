@@ -1,5 +1,5 @@
 name: gomoku_app
-description: "A couple's game app with P2P Gomoku over local WiFi."
+description: "A multi-game hub with P2P multiplayer over local WiFi."
 publish_to: 'none'
 version: 1.0.0+1
 

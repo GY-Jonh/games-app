@@ -15,15 +15,15 @@ export PATH="$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="/usr/local/share/android-commandlinetools"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
-# --- 国内镜像 (如遇网络问题可取消注释) ---
-# export PUB_HOSTED_URL="https://pub.flutter-io.cn"
-# export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
+# --- 国内镜像 (必需: pub.dev 在国内可能无法访问, 使用国内镜像确保构建成功) ---
+export PUB_HOSTED_URL="https://pub.flutter-io.cn"
+export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
 
 BUILD_TYPE="${1:-debug}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "=========================================="
-echo "  Gomoku Together - Android APK 构建"
+echo "  Game Hub - Android APK 构建"
 echo "=========================================="
 echo "构建类型: $BUILD_TYPE"
 echo "项目目录: $PROJECT_DIR"

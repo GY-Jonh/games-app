@@ -14,7 +14,7 @@
 brew install openjdk@17
 ```
 
-> 注意：JKD 17 是 **keg-only** 安装，不会覆盖系统默认 Java 路径，需要额外配置。
+> 注意：JDK 17 是 **keg-only** 安装，不会覆盖系统默认 Java 路径，需要额外配置。
 
 ### 2. 配置 Flutter 使用 JDK 17
 
@@ -38,7 +38,18 @@ flutter doctor
 
 ## 构建步骤
 
-### 1. 代码检查（可选）
+### 1. 设置国内镜像（必需）
+
+此项目依赖的包通过国内镜像 `pub.flutter-io.cn` 缓存，构建前必须设置：
+
+```bash
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+```
+
+> 若未设置，`flutter pub get` 会尝试连接 `pub.dev`，在部分网络环境下会失败（DNS 解析到 `0.0.0.0`，连接被拒绝）。
+
+### 2. 代码检查（可选）
 
 ```bash
 flutter analyze
@@ -46,16 +57,25 @@ flutter analyze
 
 确保无分析错误。
 
-### 2. 运行测试（可选）
+### 3. 运行测试（可选）
 
 ```bash
 flutter test
 ```
 
-### 3. 构建 Release APK
+### 4. 构建 Release APK
+
+推荐使用构建脚本（自动配置 JDK、SDK 路径和镜像）：
 
 ```bash
-cd gomoku_app
+./scripts/build_apk.sh release
+```
+
+或手动构建：
+
+```bash
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 flutter build apk --release
 ```
 
@@ -103,3 +123,21 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 ```
 distributionUrl=https\://mirrors.cloud.tencent.com/gradle/gradle-8.14-all.zip
 ```
+
+### `flutter pub get` 连接 pub.dev 失败
+
+```
+Got socket error trying to find package flutter_lints at https://pub.dev.
+Failed to update packages.
+```
+
+**原因**：部分网络环境下 `pub.dev` DNS 解析到 `0.0.0.0`，连接被拒绝。此项目的依赖包已在 `pub.flutter-io.cn` 镜像中缓存。
+
+**解决**：在构建前设置国内镜像：
+
+```bash
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+```
+
+推荐始终使用 `./scripts/build_apk.sh` 脚本构建，脚本已自动配置国内镜像。
