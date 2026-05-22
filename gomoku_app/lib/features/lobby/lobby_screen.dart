@@ -28,7 +28,8 @@ class LobbyScreen extends ConsumerStatefulWidget {
   ConsumerState<LobbyScreen> createState() => _LobbyScreenState();
 }
 
-class _LobbyScreenState extends ConsumerState<LobbyScreen> {
+class _LobbyScreenState extends ConsumerState<LobbyScreen>
+    with SingleTickerProviderStateMixin {
   late final ConnectionManager _connectionManager;
   Timer? _cleanupTimer;
   Timer? _inviteTimer;
@@ -36,10 +37,18 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   bool _isAccepting = false;
   GameHandler? _activeHandler;
 
+  // 单人游戏面板
+  bool _showSoloPanel = false;
+  late final AnimationController _soloPanelController;
+
   @override
   void initState() {
     super.initState();
     _connectionManager = ConnectionManager();
+    _soloPanelController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
     _initServices();
   }
 
@@ -189,6 +198,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
   void dispose() {
     _cleanupTimer?.cancel();
     _inviteTimer?.cancel();
+    _soloPanelController.dispose();
     ref.read(mDnsServiceProvider).stop();
     _connectionManager.dispose();
     super.dispose();
@@ -216,67 +226,80 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          LocalDeviceCard(
-            deviceName: playerName,
-            serverPort: serverPort,
-            isServerRunning: true,
-            onEditName: () => _showEditNameDialog(),
-          ),
-          // 单人游戏专区
-          _buildSoloSection(),
-          // 在线玩家区域
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  '在线玩家',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.onlineGreen.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${peers.length}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.onlineGreen,
+          Column(
+            children: [
+              LocalDeviceCard(
+                deviceName: playerName,
+                serverPort: serverPort,
+                isServerRunning: true,
+                onEditName: () => _showEditNameDialog(),
+              ),
+              // 单人游戏入口
+              _buildSoloEntry(),
+              // 在线玩家区域
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      '在线玩家',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color:
+                            AppTheme.onlineGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${peers.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.onlineGreen,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: peers.isEmpty
-                ? const EmptyStateWidget(isSearching: true)
-                : ListView.builder(
-                    itemCount: peers.length,
-                    itemBuilder: (context, index) {
-                      final peer = peers[index];
-                      return PeerListTile(
-                        peer: peer,
-                        isInviting: invitationState == InvitationState.outgoing &&
-                            ref.read(invitationStateProvider.notifier).toPeerId ==
-                                peer.id,
-                        onInvite: () {
-                          _invitePeer(peer);
+              ),
+              Expanded(
+                child: peers.isEmpty
+                    ? const EmptyStateWidget(isSearching: true)
+                    : ListView.builder(
+                        itemCount: peers.length,
+                        itemBuilder: (context, index) {
+                          final peer = peers[index];
+                          return PeerListTile(
+                            peer: peer,
+                            isInviting: invitationState ==
+                                    InvitationState.outgoing &&
+                                ref
+                                        .read(invitationStateProvider
+                                            .notifier)
+                                        .toPeerId ==
+                                    peer.id,
+                            onInvite: () {
+                              _invitePeer(peer);
+                            },
+                          );
                         },
-                      );
-                    },
-                  ),
+                      ),
+              ),
+            ],
           ),
+          // 单人游戏右侧弹出面板
+          if (_showSoloPanel) _buildSoloOverlay(),
         ],
       ),
       bottomSheet: invitationState == InvitationState.incoming
@@ -451,46 +474,168 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     );
   }
 
-  /// 单人模式专区
-  Widget _buildSoloSection() {
+  /// 单人游戏入口按钮
+  Widget _buildSoloEntry() {
     final soloGames = _getSoloGames();
     if (soloGames.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _openSoloPanel,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: AppTheme.primaryColor.withValues(alpha: 0.15)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.videogame_asset,
+                  color: AppTheme.primaryColor, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                '单人游戏',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${soloGames.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Icon(Icons.chevron_right,
+                  color: Colors.grey.shade400, size: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 右侧滑入的单人游戏面板
+  Widget _buildSoloOverlay() {
+    return Positioned.fill(
+      child: AnimatedBuilder(
+        animation: _soloPanelController,
+        builder: (context, child) {
+          // 背景遮罩
+          final scrimOpacity = _soloPanelController.value * 0.4;
+          return Stack(
+            children: [
+              // 遮罩
+              if (scrimOpacity > 0)
+                GestureDetector(
+                  onTap: _closeSoloPanel,
+                  child: Container(
+                    color: Colors.black.withValues(alpha: scrimOpacity),
+                  ),
+                ),
+              // 面板 (右侧滑入)
+              Align(
+                alignment: Alignment.centerRight,
+                child: FractionalTranslation(
+                  translation: Offset(
+                      1.0 - _soloPanelController.value, 0.0),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.8,
+                    height: double.infinity,
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 8,
+                      child: _buildSoloPanelContent(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 面板内容
+  Widget _buildSoloPanelContent() {
+    final soloGames = _getSoloGames();
+    return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '单人游戏',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
+          // 顶部栏
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close, size: 22),
+                  onPressed: _closeSoloPanel,
+                ),
+                const Expanded(
+                  child: Text(
+                    '单人游戏',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          ...soloGames.map(
-            (game) => Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.shade200),
-              ),
-              margin: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
-                leading: Icon(game.icon, color: AppTheme.primaryColor),
-                title: Text(
-                  game.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  game.subtitle,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-                trailing: const Icon(Icons.play_arrow, color: AppTheme.primaryColor),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                onTap: () => _startSoloGame(game.id),
-              ),
+          const Divider(height: 1),
+          // 游戏列表
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: soloGames.map((game) {
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        AppTheme.primaryColor.withValues(alpha: 0.1),
+                    child: Icon(game.icon,
+                        color: AppTheme.primaryColor, size: 22),
+                  ),
+                  title: Text(
+                    game.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: game.subtitle.isNotEmpty
+                      ? Text(game.subtitle,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600))
+                      : null,
+                  trailing: const Icon(Icons.play_arrow_rounded,
+                      color: AppTheme.primaryColor, size: 28),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  onTap: () {
+                    _closeSoloPanel();
+                    // 等面板关闭动画完成后再跳转
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      if (mounted) _startSoloGame(game.id);
+                    });
+                  },
+                );
+              }).toList(),
             ),
           ),
         ],
@@ -498,9 +643,20 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     );
   }
 
+  void _openSoloPanel() {
+    setState(() => _showSoloPanel = true);
+    _soloPanelController.forward();
+  }
+
+  void _closeSoloPanel() {
+    _soloPanelController.reverse().then((_) {
+      if (mounted) setState(() => _showSoloPanel = false);
+    });
+  }
+
   /// 返回支持单人模式的游戏
   List<GameDefinition> _getSoloGames() {
-    const soloGameIds = {'spot_diff', 'lights_out'};
+    const soloGameIds = {'spot_diff', 'lights_out', 'memory_match', 'game_2048', 'sliding_puzzle', 'minesweeper', 'tank_battle'};
     return GameRegistry.getAll().where((g) => soloGameIds.contains(g.id)).toList();
   }
 

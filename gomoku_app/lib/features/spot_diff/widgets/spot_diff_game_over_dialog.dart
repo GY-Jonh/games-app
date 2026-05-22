@@ -11,6 +11,7 @@ class SpotDiffGameOverDialog extends StatelessWidget {
   final bool isSolo;
   final VoidCallback? onRematch;
   final VoidCallback onQuit;
+  final SpotDiffRematchStatus rematchStatus;
 
   const SpotDiffGameOverDialog({
     super.key,
@@ -21,6 +22,7 @@ class SpotDiffGameOverDialog extends StatelessWidget {
     this.isSolo = true,
     this.onRematch,
     required this.onQuit,
+    this.rematchStatus = SpotDiffRematchStatus.none,
   });
 
   @override
@@ -138,14 +140,24 @@ class SpotDiffGameOverDialog extends StatelessWidget {
                   onPressed: onQuit,
                   child: const Text('返回大厅'),
                 ),
-                if (onRematch != null)
+                if (!isSolo &&
+                    rematchStatus == SpotDiffRematchStatus.received) ...[
+                  ElevatedButton(
+                    onPressed: onRematch,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('接受重赛'),
+                  ),
+                ] else if (onRematch != null)
                   ElevatedButton(
                     onPressed: onRematch,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text('再来一局'),
+                    child: Text(isSolo ? '再来一局' : '重赛'),
                   ),
               ],
             ),

@@ -213,9 +213,12 @@ class _SpotDiffScreenState extends ConsumerState<SpotDiffScreen> {
             opponentScore: gameState.opponentScore,
             totalDiffs: gameState.totalDiffs,
             isSolo: gameState.isSolo,
+            rematchStatus: rematchStatus,
             onRematch: gameState.isSolo
                 ? _restartSoloGame
                 : () {
+                    // 防止按钮连点发送重复请求
+                    if (rematchStatus == SpotDiffRematchStatus.waiting) return;
                     widget.onSendMessage(NetworkMessage(
                       type: 'spot_diff_rematch_request',
                       senderId: deviceId,

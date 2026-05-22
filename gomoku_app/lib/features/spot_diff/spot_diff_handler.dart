@@ -14,6 +14,7 @@ class SpotDiffHandler extends GameHandler {
   final WidgetRef ref;
   final void Function(NetworkMessage) _sendMessage;
   bool _isSolo = false;
+  int _myPlayerIndex = 0;
 
   SpotDiffHandler(this.ref, this._sendMessage);
 
@@ -23,6 +24,7 @@ class SpotDiffHandler extends GameHandler {
     required String opponentName,
   }) {
     _isSolo = opponentName.isEmpty;
+    _myPlayerIndex = myPlayerIndex;
     if (_isSolo) {
       // Solo 模式：直接加载图集
       _loadGameSet();
@@ -179,6 +181,12 @@ class SpotDiffHandler extends GameHandler {
   // ========== Rematch Logic ==========
 
   void _handleRematchRequest(NetworkMessage message) {
+    // 游戏中不处理重赛请求
+    if (ref.read(spotDiffStateProvider).status ==
+        SpotDiffGameStatus.playing) {
+      return;
+    }
+
     if (ref.read(spotDiffRematchStatusProvider) ==
         SpotDiffRematchStatus.waiting) {
       // 双方同时请求重开，自动同意
@@ -211,7 +219,15 @@ class SpotDiffHandler extends GameHandler {
     ref.read(spotDiffStateProvider.notifier).incrementRound();
     ref.read(spotDiffRematchStatusProvider.notifier).state =
         SpotDiffRematchStatus.none;
-    // 重新加载图集
-    _loadGameSet();
+    ref.read(spotDiffTimerProvider.notifier).reset();
+
+    if (_isSolo) {
+      _loadGameSet();
+    } else if (_myPlayerIndex == 0) {
+      // Host 加载图集并发给对手
+      final opponentName = ref.read(spotDiffStateProvider).opponentName;
+      loadAndSendSet(opponentName);
+    }
+    // Guest 不加载图集，等待 Host 发送 spot_diff_set_selected
   }
 }
