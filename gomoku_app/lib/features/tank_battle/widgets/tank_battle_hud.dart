@@ -10,6 +10,7 @@ class TankBattleHud extends StatelessWidget {
   final int score;
   final bool isSolo;
   final String opponentName;
+  final bool isBaseDestroyed;
 
   const TankBattleHud({
     super.key,
@@ -19,6 +20,7 @@ class TankBattleHud extends StatelessWidget {
     required this.score,
     required this.isSolo,
     this.opponentName = '',
+    this.isBaseDestroyed = false,
   });
 
   @override
@@ -61,7 +63,7 @@ class TankBattleHud extends StatelessWidget {
             ],
           ),
 
-          // 中: 关卡
+          // 中: 关卡 + 基地
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -72,6 +74,12 @@ class TankBattleHud extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
+              ),
+              const SizedBox(height: 2),
+              Icon(
+                isBaseDestroyed ? Icons.flag : Icons.flag,
+                color: isBaseDestroyed ? Colors.grey : Colors.green.shade400,
+                size: 14,
               ),
               if (!isSolo)
                 Text(

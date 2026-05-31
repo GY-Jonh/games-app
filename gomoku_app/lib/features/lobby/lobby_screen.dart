@@ -452,21 +452,27 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                   ),
                 ),
               ),
-              ...games.map((game) => ListTile(
-                    leading: Icon(game.icon, color: AppTheme.primaryColor),
-                    title: Text(
-                      game.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: game.subtitle.isNotEmpty
-                        ? Text(game.subtitle,
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
-                        : null,
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      onSelect(game.id);
-                    },
-                  )),
+              // 游戏列表 (可滚动, 防止条目过多时被裁剪)
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: games.map((game) => ListTile(
+                        leading: Icon(game.icon, color: AppTheme.primaryColor),
+                        title: Text(
+                          game.displayName,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: game.subtitle.isNotEmpty
+                            ? Text(game.subtitle,
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
+                            : null,
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          onSelect(game.id);
+                        },
+                      )).toList(),
+                ),
+              ),
             ],
           ),
         ),
@@ -656,7 +662,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
 
   /// 返回支持单人模式的游戏
   List<GameDefinition> _getSoloGames() {
-    const soloGameIds = {'spot_diff', 'lights_out', 'memory_match', 'game_2048', 'sliding_puzzle', 'minesweeper', 'tank_battle'};
+    const soloGameIds = {'spot_diff', 'lights_out', 'memory_match', 'game_2048', 'sliding_puzzle', 'minesweeper', 'tank_battle', 'zha_jinhua'};
     return GameRegistry.getAll().where((g) => soloGameIds.contains(g.id)).toList();
   }
 

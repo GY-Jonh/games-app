@@ -122,6 +122,7 @@ class _TankBattleScreenState extends ConsumerState<TankBattleScreen> {
           enemiesRemaining: gameState.enemiesRemaining,
           currentLevel: gameState.currentLevel,
           score: gameState.score,
+          isBaseDestroyed: gameState.isBaseDestroyed,
           isSolo: isSolo,
           opponentName: widget.opponentName,
         ),

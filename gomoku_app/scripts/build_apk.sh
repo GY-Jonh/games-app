@@ -2,7 +2,7 @@
 # ============================================================
 #  Android APK 构建脚本 - Gomoku Together
 #  用法: ./scripts/build_apk.sh [debug|release]
-#  默认: debug
+#  默认: release
 # ============================================================
 
 set -e
@@ -19,7 +19,7 @@ export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 export PUB_HOSTED_URL="https://pub.flutter-io.cn"
 export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
 
-BUILD_TYPE="${1:-debug}"
+BUILD_TYPE="${1:-release}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "=========================================="

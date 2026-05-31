@@ -108,7 +108,7 @@ class TankBattleConstants {
   static const double tankHitboxSize = 0.9;
   static const double gridSnapThreshold = 0.025;
   static const int shootCooldownTicks = 30; // ~0.5s
-  static const int spawnInvincibleTicks = 180; // 3 秒
+  static const int spawnInvincibleTicks = 90; // 1.5 秒
 
   // 子弹
   static const int bulletSpeed = 10; // 瓦片/秒

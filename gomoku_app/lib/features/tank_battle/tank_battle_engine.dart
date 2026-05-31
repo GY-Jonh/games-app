@@ -262,8 +262,8 @@ class TankBattleEngine {
         _aiDecideDirection(tank);
       }
 
-      // 每帧判断射击 (60fps 下频率降低为 1/3 保持平衡)
-      final fireRate = (0.02 + level * 0.005) / 3;
+      // 每帧判断射击 (60fps)
+      final fireRate = 0.015 + level * 0.005;
       if (_random.nextDouble() < fireRate) {
         if (tank.shootCooldown <= 0) {
           _fireBullet(tank);
@@ -666,6 +666,65 @@ class TankBattleEngine {
     _tanks.removeWhere((t) => !t.isAlive && t.type.isEnemy);
   }
 
+  /// 应用远程快照（Guest 端同步用，防止引擎状态发散导致闪烁）。
+  void applyRemoteSnapshot(TankBattleState snapshot) {
+    // 重建坦克列表
+    _tanks.clear();
+    int maxTankId = _nextTankId - 1;
+    for (final t in snapshot.tanks) {
+      final tank = _Tank(
+        id: t.id,
+        x: t.x,
+        y: t.y,
+        direction: t.direction,
+        type: t.type,
+        hp: t.hp,
+        ownerPlayerIndex: t.ownerPlayerIndex,
+      );
+      tank.isAlive = t.isAlive;
+      tank.invincibleFrames = t.invincibleFrames;
+      tank.isMoving = t.isMoving;
+      _tanks.add(tank);
+      if (t.id > maxTankId) maxTankId = t.id;
+    }
+    _nextTankId = maxTankId + 1;
+
+    // 重建子弹列表
+    _bullets.clear();
+    int maxBulletId = _nextBulletId - 1;
+    for (final b in snapshot.bullets) {
+      _bullets.add(_Bullet(
+        id: b.id,
+        x: b.x,
+        y: b.y,
+        direction: b.direction,
+        ownerId: b.ownerId,
+        ownerPlayerIndex: b.ownerPlayerIndex,
+      ));
+      if (b.id > maxBulletId) maxBulletId = b.id;
+    }
+    _nextBulletId = maxBulletId + 1;
+
+    // 重建爆炸列表
+    _explosions.clear();
+    for (final e in snapshot.explosions) {
+      _explosions.add(_Explosion(
+        x: e.x,
+        y: e.y,
+        frame: e.frame,
+        isLarge: e.isLarge,
+      ));
+    }
+
+    // 同步游戏状态
+    _score = snapshot.score;
+    _livesRemaining = snapshot.livesRemaining;
+    _isBaseDestroyed = snapshot.isBaseDestroyed;
+    _tickCount = snapshot.gameTick;
+    _isLevelComplete = snapshot.phase == TankBattlePhase.levelComplete;
+    _isGameOver = snapshot.phase == TankBattlePhase.lost;
+  }
+
   /// 玩家重生 (游戏循环外调用)。
   void respawnPlayer(int playerIndex) {
     final existing = _tanks.where(
@@ -757,5 +816,22 @@ class TankBattleEngine {
       }
     }
     return changes;
+  }
+
+  /// 应用地图瓦片变化 (PvP 同步，Guest 侧引擎也用此同步)。
+  void applyTileChanges(List<List<int>> changes) {
+    for (final change in changes) {
+      if (change.length >= 3) {
+        final r = change[0];
+        final c = change[1];
+        final type = TileType.values[change[2]];
+        if (r >= 0 &&
+            r < TankBattleConstants.gridSize &&
+            c >= 0 &&
+            c < TankBattleConstants.gridSize) {
+          _map[r][c] = type;
+        }
+      }
+    }
   }
 }

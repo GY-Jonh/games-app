@@ -7,6 +7,7 @@ import 'package:gomoku_app/core/game_framework/game_handler.dart';
 import 'package:gomoku_app/core/utils/device_info.dart';
 import 'package:gomoku_app/features/tank_battle/constants/tank_battle_constants.dart';
 import 'package:gomoku_app/features/tank_battle/models/tank_battle_state.dart';
+import 'package:gomoku_app/features/tank_battle/models/tank_battle_input.dart';
 import 'package:gomoku_app/features/tank_battle/tank_battle_providers.dart';
 import 'package:gomoku_app/features/tank_battle/tank_battle_screen.dart';
 import 'package:gomoku_app/models/network_message.dart';
@@ -54,12 +55,14 @@ class TankBattleHandler extends GameHandler {
     // 设置同步回调
     notifier.onSyncNeeded = (snapshot) {
       final mapChanges = notifier.getMapChanges();
+      final hostInput = notifier.getCurrentInput().toJson();
       _sendMessage(NetworkMessage(
         type: 'tank_battle_state_sync',
         senderId: deviceId,
         payload: {
           ...snapshot.toJson(),
           'map_changes': mapChanges,
+          'host_input': hostInput,
         },
         timestamp: DateTime.now().millisecondsSinceEpoch,
       ));
@@ -184,7 +187,22 @@ class TankBattleHandler extends GameHandler {
       message.payload,
       currentMap,
     );
+
+    // 同步 Host 的输入到本地引擎，确保 Guest 引擎在两次同步之间正确模拟 Host 坦克
+    final hostInputJson = message.payload['host_input'];
+    if (hostInputJson is Map<String, dynamic>) {
+      final hostInput = TankBattleInput.fromJson(hostInputJson);
+      ref
+          .read(tankBattleStateProvider.notifier)
+          .setRemotePlayerInput(hostInput.direction, hostInput.firing);
+    }
+
     ref.read(tankBattleStateProvider.notifier).applyRemoteState(remoteState);
+
+    // 同步引擎内部状态，防止状态发散导致闪烁
+    ref
+        .read(tankBattleStateProvider.notifier)
+        .syncEngineFromState(remoteState);
 
     // 应用地图增量
     final mapChanges = message.payload['map_changes'];

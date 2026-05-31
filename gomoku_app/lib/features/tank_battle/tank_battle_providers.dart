@@ -92,6 +92,8 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
       opponentName: opponentName,
     );
 
+    // Guest 在 PvP 中也运行游戏循环，用本地引擎提供 60fps 流畅画面，
+    // 同时通过 applyRemoteState 接收 Host 权威状态修正偏差。
     _gameLoopTimer = Timer.periodic(
       Duration(milliseconds: (TankBattleConstants.tickDuration * 1000).toInt()),
       (_) => _gameLoopTick(),
@@ -102,18 +104,33 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
     if (_engine == null) return;
     if (state.phase != TankBattlePhase.playing) return;
 
-    // 应用玩家输入
-    _engine!.setPlayerInput(0, _playerDirection, _playerFiring);
-    _engine!.setPlayerInput(1, _remoteDirection, _remoteFiring);
+    final isHost = onSyncNeeded != null;
+
+    // 应用玩家输入 (Host/Guest 输入映射不同)
+    if (state.isSolo) {
+      // Solo: 只有 1 辆玩家坦克
+      _engine!.setPlayerInput(0, _playerDirection, _playerFiring);
+    } else if (isHost) {
+      // Host: Player 0 = 自己, Player 1 = 对手(Guest)
+      _engine!.setPlayerInput(0, _playerDirection, _playerFiring);
+      _engine!.setPlayerInput(1, _remoteDirection, _remoteFiring);
+    } else {
+      // Guest: Player 0 = 对手(Host), Player 1 = 自己
+      _engine!.setPlayerInput(0, _remoteDirection, _remoteFiring);
+      _engine!.setPlayerInput(1, _playerDirection, _playerFiring);
+    }
     _engine!.tick(TankBattleConstants.tickDuration);
 
-    // 检查玩家死亡并重生
+    // 检查所有玩家死亡并重生（Solo: 1玩家，PvP: 2玩家）
     if (state.livesRemaining > 0) {
-      final snapshot = _engine!.toSnapshot(phase: TankBattlePhase.playing);
-      final playerAlive =
-          snapshot.tanks.any((t) => t.type.isPlayer && t.ownerPlayerIndex == 0);
-      if (!playerAlive && _engine!.livesRemaining > 0) {
-        _engine!.respawnPlayer(0);
+      final engineSnapshot =
+          _engine!.toSnapshot(phase: TankBattlePhase.playing);
+      for (int i = 0; i < _engine!.playerCount; i++) {
+        final playerAlive = engineSnapshot.tanks
+            .any((t) => t.type.isPlayer && t.ownerPlayerIndex == i);
+        if (!playerAlive && _engine!.livesRemaining > 0) {
+          _engine!.respawnPlayer(i);
+        }
       }
     }
 
@@ -126,26 +143,15 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
       opponentName: state.opponentName,
     );
 
-    // PvP 同步
-    if (!state.isSolo && _engine!.tickCount % TankBattleConstants.syncIntervalTicks == 0) {
+    // PvP 同步 (仅 Host)
+    if (isHost && _engine!.tickCount % TankBattleConstants.syncIntervalTicks == 0) {
       onSyncNeeded?.call(state);
     }
 
-    // 关卡完成 -> 延迟后进入下一关
+    // 关卡完成时停止游戏循环
     if (newPhase == TankBattlePhase.levelComplete) {
       _gameLoopTimer?.cancel();
       _gameLoopTimer = null;
-      _phaseTimer = Timer(
-        Duration(
-            milliseconds:
-                (TankBattleConstants.levelCompleteDelayTicks *
-                        TankBattleConstants.tickDuration *
-                        1000)
-                    .toInt()),
-        () {
-          // 自动进入下一关的信号由 screen/handler 处理
-        },
-      );
     }
 
     // 游戏结束
@@ -167,15 +173,28 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
   void setPlayerInput(Direction? direction, bool firing) {
     _playerDirection = direction;
     _playerFiring = firing;
-    // 直接推送到引擎，无需等待下一帧轮询
-    _engine?.setPlayerInput(0, direction, firing);
+    final isHost = onSyncNeeded != null;
+    if (isHost) {
+      // Host: 自己的坦克是 Player 0
+      _engine?.setPlayerInput(0, direction, firing);
+    } else {
+      // Guest: 自己的坦克是 Player 1
+      _engine?.setPlayerInput(1, direction, firing);
+    }
   }
 
-  /// Host 设置远程玩家 (Player 2) 的输入。
+  /// 设置远程玩家输入 (Host: Guest 的输入, Guest: Host 的输入)。
   void setRemotePlayerInput(Direction? direction, bool firing) {
     _remoteDirection = direction;
     _remoteFiring = firing;
-    _engine?.setPlayerInput(1, direction, firing);
+    final isHost = onSyncNeeded != null;
+    if (isHost) {
+      // Host: 远程玩家(Guest) 是 Player 1
+      _engine?.setPlayerInput(1, direction, firing);
+    } else {
+      // Guest: 远程玩家(Host) 是 Player 0
+      _engine?.setPlayerInput(0, direction, firing);
+    }
   }
 
   /// 获取当前输入状态 (用于 PvP 发送)。
@@ -193,7 +212,12 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
     );
   }
 
-  /// Guest: 应用地图增量。
+  /// Guest: 同步引擎内部状态（防止状态发散导致的闪烁）。
+  void syncEngineFromState(TankBattleState syncedState) {
+    _engine?.applyRemoteSnapshot(syncedState);
+  }
+
+  /// Guest: 应用地图增量 (同时同步到引擎)。
   void applyMapDelta(List<List<int>> changes) {
     final map = state.map.map((row) => List<TileType>.from(row)).toList();
     for (final change in changes) {
@@ -210,6 +234,8 @@ class TankBattleStateNotifier extends StateNotifier<TankBattleState> {
       }
     }
     state = state.copyWith(map: map);
+    // 同步到引擎，确保本地引擎的地图与 Host 保持一致
+    _engine?.applyTileChanges(changes);
   }
 
   /// Host: 获取地图增量。
