@@ -72,9 +72,9 @@ class ZhaJinhuaResultOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // 双方手牌
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              // 双方手牌 - 上下布局（对手在上，你在下）
+              Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // 对手
                   _handColumn(
@@ -83,7 +83,7 @@ class ZhaJinhuaResultOverlay extends StatelessWidget {
                     opponentCardsRevealed,
                     opponentChips,
                   ),
-                  const SizedBox(width: 24),
+                  const SizedBox(height: 12),
                   // VS
                   Text(
                     'VS',
@@ -93,7 +93,7 @@ class ZhaJinhuaResultOverlay extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 24),
+                  const SizedBox(height: 12),
                   // 玩家
                   _handColumn(
                     '你',

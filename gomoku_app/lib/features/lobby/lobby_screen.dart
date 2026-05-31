@@ -662,7 +662,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
 
   /// 返回支持单人模式的游戏
   List<GameDefinition> _getSoloGames() {
-    const soloGameIds = {'spot_diff', 'lights_out', 'memory_match', 'game_2048', 'sliding_puzzle', 'minesweeper', 'tank_battle', 'zha_jinhua'};
+    const soloGameIds = {'spot_diff', 'lights_out', 'memory_match', 'game_2048', 'sliding_puzzle', 'minesweeper', 'tank_battle', 'zha_jinhua', 'card_battle'};
     return GameRegistry.getAll().where((g) => soloGameIds.contains(g.id)).toList();
   }
 
