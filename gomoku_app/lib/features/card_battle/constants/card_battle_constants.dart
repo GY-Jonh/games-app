@@ -26,6 +26,7 @@ enum CardBattleStatus {
   playing,
   won,
   lost,
+  draw,
   disconnected,
 }
 

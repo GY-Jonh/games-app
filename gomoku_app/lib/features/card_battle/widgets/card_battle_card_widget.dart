@@ -61,10 +61,21 @@ class CardBattleCardWidget extends StatelessWidget {
           ],
         ),
         child: Center(
-          child: Icon(
-            Icons.question_mark,
-            color: Colors.indigo.shade300.withValues(alpha: 0.6),
-            size: width * 0.4,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.diamond,
+                color: Colors.indigo.shade300.withValues(alpha: 0.5),
+                size: width * 0.3,
+              ),
+              const SizedBox(height: 4),
+              Icon(
+                Icons.diamond,
+                color: Colors.indigo.shade300.withValues(alpha: 0.3),
+                size: width * 0.18,
+              ),
+            ],
           ),
         ),
       ),
@@ -81,7 +92,7 @@ class CardBattleCardWidget extends StatelessWidget {
     final bgColor = isSelected ? Colors.amber.shade50 : Colors.white;
     final borderColor = isSelected
         ? Colors.amber.shade400
-        : (isPlayable ? Colors.blue.shade300 : Colors.grey.shade300);
+        : (isPlayable ? Colors.blue.shade300 : Colors.grey.shade400);
     final borderWidth = isSelected ? 2.5 : (isPlayable ? 1.5 : 0.8);
 
     return GestureDetector(
@@ -92,7 +103,7 @@ class CardBattleCardWidget extends StatelessWidget {
         height: height,
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
             color: borderColor,
             width: borderWidth,
@@ -101,63 +112,183 @@ class CardBattleCardWidget extends StatelessWidget {
             BoxShadow(
               color: isSelected
                   ? Colors.amber.withValues(alpha: 0.4)
-                  : Colors.black.withValues(alpha: 0.15),
+                  : Colors.black.withValues(alpha: 0.2),
               blurRadius: isSelected ? 8 : 3,
               offset: Offset(0, isSelected ? 0 : 2),
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // 点数/王标签
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                card!.rankLabel,
+        child: card!.isJoker ? _buildJokerFace(color) : _buildSuitFace(color),
+      ),
+    );
+  }
+
+  Widget _buildJokerFace(Color color) {
+    final label = card!.rankLabel; // "小" or "大"
+    return Stack(
+      children: [
+        // 背景色块
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  card!.isBigJoker ? Colors.red.shade100 : Colors.grey.shade200,
+                  card!.isBigJoker ? Colors.red.shade50 : Colors.grey.shade100,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(5),
+            ),
+          ),
+        ),
+        // 左上角标签
+        Positioned(
+          left: 4,
+          top: 2,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: width * 0.16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        // 右下标
+        Positioned(
+          right: 4,
+          bottom: 2,
+          child: Transform.rotate(
+            angle: 3.14159,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: width * 0.16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        // 中心图标
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                card!.isBigJoker ? '大王' : '小王',
                 style: TextStyle(
                   color: color,
-                  fontSize: width * 0.26,
+                  fontSize: width * 0.22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-            // 花色/王标注
-            if (card!.isJoker)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Icon(
-                  card!.isBigJoker ? Icons.star : Icons.star_half,
-                  color: color,
-                  size: width * 0.3,
-                ),
-              )
-            else
+              Icon(
+                card!.isBigJoker ? Icons.star : Icons.star_half,
+                color: color,
+                size: width * 0.28,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuitFace(Color color) {
+    final rankStr = card!.rankLabel;
+    final suitStr = card!.suitSymbol;
+    final isFaceCard = ['J', 'Q', 'K', 'A', '2'].contains(rankStr);
+    final cornerSize = width * 0.17;
+    final centerSize = isFaceCard ? width * 0.26 : width * 0.35;
+
+    return Stack(
+      children: [
+        // 左上角：点数 + 花色
+        Positioned(
+          left: 4,
+          top: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                card!.suitSymbol,
+                rankStr,
                 style: TextStyle(
                   color: color,
-                  fontSize: width * 0.32,
+                  fontSize: cornerSize,
+                  fontWeight: FontWeight.bold,
+                  height: 0.9,
                 ),
               ),
-            // 下方向旋转标签
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Transform.rotate(
-                angle: 3.14159,
-                child: Text(
-                  card!.rankLabel,
+              Text(
+                suitStr,
+                style: TextStyle(
+                  color: color,
+                  fontSize: cornerSize * 0.7,
+                  height: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 右下角（旋转）
+        Positioned(
+          right: 4,
+          bottom: 2,
+          child: Transform.rotate(
+            angle: 3.14159,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rankStr,
                   style: TextStyle(
                     color: color,
-                    fontSize: width * 0.18,
+                    fontSize: cornerSize,
                     fontWeight: FontWeight.bold,
+                    height: 0.9,
                   ),
                 ),
-              ),
+                Text(
+                  suitStr,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: cornerSize * 0.7,
+                    height: 0.8,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+        // 中心：大花色符号（花牌显示牌面文字）
+        Center(
+          child: isFaceCard
+              ? SizedBox(
+                  width: width * 0.4,
+                  height: width * 0.4,
+                  child: Center(
+                    child: Text(
+                      rankStr,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: centerSize,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                )
+              : Text(
+                  suitStr,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: centerSize,
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

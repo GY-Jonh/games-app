@@ -101,6 +101,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
           'play',
           selectedCards.map((c) => c.toJson()).toList(),
         );
+        state = state.copyWith(phase: CardBattlePhase.opponentTurn);
       }
       return;
     }
@@ -123,6 +124,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
     if (!state.isSolo && _engine == null) {
       if (onGuestActionNeeded != null) {
         onGuestActionNeeded!('pass', null);
+        state = state.copyWith(phase: CardBattlePhase.opponentTurn);
       }
       return;
     }
@@ -225,7 +227,11 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
   /// PvP: Guest 接收 Host 发来的远程状态快照。
   void applyRemoteState(CardBattleState remoteState) {
     _aiTimer?.cancel();
-    state = remoteState;
+    // 保留 Guest 本地的身份信息（Host 发送的状态中名字是 Host 视角的）
+    state = remoteState.copyWith(
+      selfName: state.selfName,
+      opponentName: state.opponentName,
+    );
   }
 
   /// PvP: Guest 接收 Host 发来的新回合初始状态。
@@ -235,20 +241,25 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
     required List<GameCard> opponentCards,
     required String selfName,
     required String opponentName,
+    int turnPlayerIndex = 0,
   }) {
     _aiTimer?.cancel();
     state = CardBattleState(
-      phase: CardBattlePhase.playerTurn,
+      phase: turnPlayerIndex == 0
+          ? CardBattlePhase.playerTurn
+          : CardBattlePhase.opponentTurn,
       status: CardBattleStatus.playing,
       deck: [],
       playerHand: List.from(playerCards),
       opponentHand: List.from(opponentCards),
       tableCards: [],
+      playerTableCards: [],
+      opponentTableCards: [],
       lastPlayWasPass: false,
       playerCollected: [],
       opponentCollected: [],
-      firstPlayer: 0,
-      turnPlayerIndex: 0,
+      firstPlayer: turnPlayerIndex,
+      turnPlayerIndex: turnPlayerIndex,
       seed: seed,
       isSolo: false,
       selfName: selfName,

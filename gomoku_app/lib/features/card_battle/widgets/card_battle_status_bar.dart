@@ -6,9 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gomoku_app/features/card_battle/card_battle_providers.dart';
 
 class CardBattleStatusBar extends ConsumerWidget {
-  final String opponentName;
 
-  const CardBattleStatusBar({super.key, this.opponentName = '对手'});
+  const CardBattleStatusBar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -17,15 +16,8 @@ class CardBattleStatusBar extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 我方收集牌数
-          _buildPile(
-            label: '我',
-            count: state.playerCollectedCount,
-            color: Colors.green.shade300,
-            icon: Icons.arrow_downward,
-          ),
           // 牌堆剩余
           Column(
             mainAxisSize: MainAxisSize.min,
@@ -64,44 +56,9 @@ class CardBattleStatusBar extends ConsumerWidget {
               ),
             ],
           ),
-          // 对手收集牌数
-          _buildPile(
-            label: opponentName,
-            count: state.opponentCollectedCount,
-            color: Colors.orange.shade300,
-            icon: Icons.arrow_upward,
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildPile({
-    required String label,
-    required int count,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey.shade400,
-            fontSize: 11,
-          ),
-        ),
-        Icon(icon, color: color, size: 14),
-        Text(
-          '$count',
-          style: TextStyle(
-            color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
 }

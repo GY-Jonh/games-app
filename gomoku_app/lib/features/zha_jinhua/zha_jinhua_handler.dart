@@ -7,7 +7,6 @@ import 'package:gomoku_app/core/game_framework/game_handler.dart';
 import 'package:gomoku_app/core/utils/device_info.dart';
 import 'package:gomoku_app/features/zha_jinhua/constants/zha_jinhua_constants.dart';
 import 'package:gomoku_app/features/zha_jinhua/models/playing_card.dart';
-import 'package:gomoku_app/features/zha_jinhua/models/zha_jinhua_state.dart';
 import 'package:gomoku_app/features/zha_jinhua/zha_jinhua_providers.dart';
 import 'package:gomoku_app/features/zha_jinhua/zha_jinhua_screen.dart';
 import 'package:gomoku_app/models/network_message.dart';
@@ -178,7 +177,10 @@ class ZhaJinhuaHandler extends GameHandler {
 
   void _handleGameOver(NetworkMessage message) {
     final reason = message.payload['reason'] as String? ?? 'unknown';
-    if (reason == 'quit' || reason == 'disconnect') {
+    if (reason == 'chip_out') {
+      final winner = message.payload['winner'] as int? ?? -1;
+      ref.read(zhaJinhuaStateProvider.notifier).handleChipOut(winner);
+    } else if (reason == 'quit' || reason == 'disconnect') {
       ref.read(zhaJinhuaStateProvider.notifier).handleConnectionLost();
     }
   }
@@ -235,6 +237,16 @@ class ZhaJinhuaHandler extends GameHandler {
   void _sendRoundStart() {
     final state = ref.read(zhaJinhuaStateProvider);
     if (state.status != ZhaJinhuaGameStatus.playing) {
+      // 筹码不足等非 playing 状态 → 通知 Guest 游戏结束
+      _sendMessage(NetworkMessage(
+        type: 'zha_jinhua_game_over',
+        senderId: deviceId,
+        payload: {
+          'reason': 'chip_out',
+          'winner': state.playerChips > state.opponentChips ? 0 : 1,
+        },
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      ));
       return;
     }
 
@@ -334,6 +346,7 @@ class ZhaJinhuaHandler extends GameHandler {
     return ZhaJinhuaScreen(
       opponentName: opponentName,
       onSendMessage: onSendMessage,
+      myPlayerIndex: _myPlayerIndex,
     );
   }
 

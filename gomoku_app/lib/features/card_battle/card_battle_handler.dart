@@ -142,8 +142,7 @@ class CardBattleHandler extends GameHandler {
   void _handleActionResult(NetworkMessage message) {
     final payload = message.payload;
     // Guest 更新本地的引擎状态
-    final phaseStr = payload['phase'] as String?;
-    if (phaseStr != null) {
+    if (payload.containsKey('phase') && payload['phase'] != null) {
       ref.read(cardBattleStateProvider.notifier).applyRemoteState(
             CardBattleState.fromJson(payload),
           );
@@ -162,6 +161,7 @@ class CardBattleHandler extends GameHandler {
         .toList();
     final opponentName =
         payload['opponent_name'] as String? ?? '对手';
+    final turnPlayerIndex = payload['turn_player_index'] as int? ?? 0;
 
     ref.read(cardBattleStateProvider.notifier).applyRoundStart(
           seed: seed,
@@ -169,6 +169,7 @@ class CardBattleHandler extends GameHandler {
           opponentCards: oCards,
           selfName: deviceName,
           opponentName: opponentName,
+          turnPlayerIndex: turnPlayerIndex,
         );
   }
 
@@ -183,14 +184,48 @@ class CardBattleHandler extends GameHandler {
 
   /// 发送动作结果或状态更新给 Guest (翻转视角).
   void _sendActionResult(Map<String, dynamic> actionMap) {
-    final state = ref.read(cardBattleStateProvider);
-    if (state.status != CardBattleStatus.playing &&
-        !state.isGameOver) return;
+    final s = ref.read(cardBattleStateProvider);
+    if (s.status != CardBattleStatus.playing && !s.isGameOver) return;
 
-    final payload = state.toJson();
-    // 翻转视角: player ↔ opponent
-    payload['phase'] = _flipPhase(state.phase.name);
-    payload['opponent_name'] = deviceName;
+    // 手动构建 JSON，同时翻转 Host→Guest 视角
+    final payload = <String, dynamic>{
+      'phase': (s.phase == CardBattlePhase.playerTurn
+              ? CardBattlePhase.opponentTurn
+              : CardBattlePhase.playerTurn)
+          .index,
+      'status': s.status.index,
+      // 翻转手牌：Guest 的手 = Host 的对手
+      'player_hand':
+          s.opponentHand.map((c) => c.toJson()).toList(),
+      'opponent_hand':
+          s.playerHand.map((c) => c.toJson()).toList(),
+      // 桌面牌（已拆分为双方）
+      'table_cards':
+          s.tableCards.map((c) => c.toJson()).toList(),
+      'player_table_cards':
+          s.opponentTableCards.map((c) => c.toJson()).toList(),
+      'opponent_table_cards':
+          s.playerTableCards.map((c) => c.toJson()).toList(),
+      // 收集牌
+      'player_collected':
+          s.opponentCollected.map((c) => c.toJson()).toList(),
+      'opponent_collected':
+          s.playerCollected.map((c) => c.toJson()).toList(),
+      // 数值
+      'deck_remaining': s.deckRemaining,
+      'current_combo_type': s.currentCombo?.type.index,
+      'current_combo_value': s.currentCombo?.primaryValue,
+      'current_combo_length': s.currentCombo?.length,
+      'first_player': s.firstPlayer == 0 ? 1 : 0,
+      'turn_player_index': s.turnPlayerIndex == 0 ? 1 : 0,
+      'round_number': s.roundNumber,
+      'last_round_passed': s.lastRoundPassed ? 1 : 0,
+      'player_hand_count': s.opponentHandCount,
+      'opponent_hand_count': s.playerHandCount,
+      'result_message': s.resultMessage,
+      'opponent_name': deviceName,
+      'self_name': '',
+    };
 
     _sendMessage(NetworkMessage(
       type: 'card_battle_action_result',
@@ -226,13 +261,6 @@ class CardBattleHandler extends GameHandler {
       },
       timestamp: DateTime.now().millisecondsSinceEpoch,
     ));
-  }
-
-  /// 翻转阶段名 (playerTurn ↔ opponentTurn).
-  String _flipPhase(String phase) {
-    if (phase == 'playerTurn') return 'opponentTurn';
-    if (phase == 'opponentTurn') return 'playerTurn';
-    return phase;
   }
 
   // ========== 断线 / 重赛 ==========

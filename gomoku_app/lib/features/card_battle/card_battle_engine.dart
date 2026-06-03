@@ -18,6 +18,8 @@ class CardBattleEngine {
 
   // 当前轮
   List<GameCard> _tableCards = [];
+  List<GameCard> _playerTableCards = [];
+  List<GameCard> _opponentTableCards = [];
   CardCombo? _currentCombo;
   bool _lastPlayWasPass = false;
   int _firstPlayer;
@@ -44,6 +46,7 @@ class CardBattleEngine {
     _opponentHand = List.from(oHand);
     _deck = deck2;
     _roundNumber = 1;
+    _sortHands();
   }
 
   // ========== 公共查询 ==========
@@ -53,6 +56,8 @@ class CardBattleEngine {
   List<GameCard> get playerCollected => List.unmodifiable(_playerCollected);
   List<GameCard> get opponentCollected => List.unmodifiable(_opponentCollected);
   List<GameCard> get tableCards => List.unmodifiable(_tableCards);
+  List<GameCard> get playerTableCards => List.unmodifiable(_playerTableCards);
+  List<GameCard> get opponentTableCards => List.unmodifiable(_opponentTableCards);
   CardCombo? get currentCombo => _currentCombo;
   bool get lastPlayWasPass => _lastPlayWasPass;
   int get turnPlayerIndex => _turnPlayerIndex;
@@ -91,6 +96,7 @@ class CardBattleEngine {
     for (final card in selectedCards) {
       _playerHand.remove(card);
     }
+    _playerTableCards.addAll(selectedCards);
     _tableCards.addAll(selectedCards);
     _currentCombo = combo;
     _lastPlayWasPass = false;
@@ -125,6 +131,10 @@ class CardBattleEngine {
   Map<String, dynamic> aiPlay() {
     if (_isGameOver) {
       return {'action': 'pass'};
+    }
+    if (_opponentHand.isEmpty) {
+      // 无手牌自动过
+      return _aiPass();
     }
 
     // 如果桌上有牌需要管上
@@ -184,6 +194,7 @@ class CardBattleEngine {
     for (final card in selectedCards) {
       _opponentHand.remove(card);
     }
+    _opponentTableCards.addAll(selectedCards);
     _tableCards.addAll(selectedCards);
     _currentCombo = combo;
     _lastPlayWasPass = false;
@@ -211,6 +222,7 @@ class CardBattleEngine {
     for (final card in combo.cards) {
       _opponentHand.remove(card);
     }
+    _opponentTableCards.addAll(combo.cards);
     _tableCards.addAll(combo.cards);
     _currentCombo = combo;
     _lastPlayWasPass = false;
@@ -229,6 +241,11 @@ class CardBattleEngine {
   }
 
   Map<String, dynamic> _aiLeadPlay() {
+    // 没牌可出（保护）
+    if (_opponentHand.isEmpty) {
+      return _aiPass();
+    }
+
     // 优先出顺子，其次炸弹，然后对子/单张
     final hand = List<GameCard>.from(_opponentHand);
 
@@ -311,6 +328,8 @@ class CardBattleEngine {
   void _resolveRound(int winnerIndex) {
     final allCards = List<GameCard>.from(_tableCards);
     _tableCards.clear();
+    _playerTableCards.clear();
+    _opponentTableCards.clear();
     _currentCombo = null;
     _lastPlayWasPass = false;
 
@@ -326,33 +345,47 @@ class CardBattleEngine {
     // 赢家先出
     _turnPlayerIndex = winnerIndex;
     _roundNumber++;
+
+    // 牌堆为空且当前出牌人无手牌 → 游戏结束，比较收集牌数
+    if (_deck.isEmpty) {
+      if (_turnPlayerIndex == 0 && _playerHand.isEmpty) {
+        _finalizeGame(-1);
+        return;
+      } else if (_turnPlayerIndex == 1 && _opponentHand.isEmpty) {
+        _finalizeGame(-1);
+        return;
+      }
+    }
   }
 
   void _drawToHandSize() {
-    // 玩家补牌
-    final needPlayer = CardBattleConstants.handSize - _playerHand.length;
-    if (needPlayer > 0 && _deck.isNotEmpty) {
-      final take = min(needPlayer, _deck.length);
-      for (int i = 0; i < take; i++) {
+    final target = CardBattleConstants.handSize;
+
+    // 交替抽牌：玩家→对手→玩家→对手→... 确保公平
+    while ((_playerHand.length < target ||
+            _opponentHand.length < target) &&
+        _deck.isNotEmpty) {
+      if (_playerHand.length < target) {
         _playerHand.add(_deck.removeAt(0));
       }
-    }
-
-    // 对手补牌
-    final needOpponent = CardBattleConstants.handSize - _opponentHand.length;
-    if (needOpponent > 0 && _deck.isNotEmpty) {
-      final take = min(needOpponent, _deck.length);
-      for (int i = 0; i < take; i++) {
+      if (_opponentHand.length < target && _deck.isNotEmpty) {
         _opponentHand.add(_deck.removeAt(0));
       }
     }
 
+    // 抽牌后按大小从右到左排序（左边最大）
+    _sortHands();
+  
     // 如果牌堆已空且双方手牌都空了，游戏结束
     if (_deck.isEmpty && _playerHand.isEmpty && _opponentHand.isEmpty) {
-      _finalizeGame(
-        _playerCollected.length >= _opponentCollected.length ? 0 : 1,
-      );
+      _finalizeGame(-1);
     }
+  }
+  
+  /// 手牌从大到小排序（左边最大）。
+  void _sortHands() {
+    _playerHand.sort((a, b) => b.compareValue.compareTo(a.compareValue));
+    _opponentHand.sort((a, b) => b.compareValue.compareTo(a.compareValue));
   }
 
   /// 游戏结束
@@ -360,8 +393,32 @@ class CardBattleEngine {
   // ========== 游戏结束 ==========
 
   void _finalizeGame(int winnerIndex) {
+    // 先将桌面牌给赢家（最后一手牌仍在桌上，未入收集区）
+    if (_tableCards.isNotEmpty) {
+      if (winnerIndex == 0) {
+        _playerCollected.addAll(List.from(_tableCards));
+      } else {
+        _opponentCollected.addAll(List.from(_tableCards));
+      }
+      _tableCards.clear();
+    }
+
     _isGameOver = true;
-    if (winnerIndex == 0) {
+    if (winnerIndex == -1) {
+      // 比较收集牌数决定胜负
+      if (_playerCollected.length > _opponentCollected.length) {
+        _finalStatus = CardBattleStatus.won;
+        _resultMessage =
+            '你赢了！收集了 ${_playerCollected.length} 张牌 (对手 ${_opponentCollected.length} 张)';
+      } else if (_opponentCollected.length > _playerCollected.length) {
+        _finalStatus = CardBattleStatus.lost;
+        _resultMessage =
+            '你输了，收集了 ${_playerCollected.length} 张牌 (对手 ${_opponentCollected.length} 张)';
+      } else {
+        _finalStatus = CardBattleStatus.draw;
+        _resultMessage = '平局！双方都收集了 ${_playerCollected.length} 张牌';
+      }
+    } else if (winnerIndex == 0) {
       _finalStatus = CardBattleStatus.won;
       _resultMessage =
           '你赢了！收集了 ${_playerCollected.length} 张牌 (对手 ${_opponentCollected.length} 张)';
@@ -396,6 +453,8 @@ class CardBattleEngine {
       playerHand: List.from(_playerHand),
       opponentHand: List.from(_opponentHand),
       tableCards: List.from(_tableCards),
+      playerTableCards: List.from(_playerTableCards),
+      opponentTableCards: List.from(_opponentTableCards),
       currentCombo: _currentCombo,
       lastPlayWasPass: _lastPlayWasPass,
       playerCollected: List.from(_playerCollected),

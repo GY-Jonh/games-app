@@ -18,7 +18,7 @@ class CardBattleResultOverlay extends ConsumerWidget {
     }
 
     final isWin = state.status == CardBattleStatus.won;
-
+    final isDraw = state.status == CardBattleStatus.draw;
     return Container(
       color: Colors.black.withValues(alpha: 0.7),
       child: Center(
@@ -26,12 +26,18 @@ class CardBattleResultOverlay extends ConsumerWidget {
           margin: const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: isWin
-                ? Colors.green.shade800.withValues(alpha: 0.9)
-                : Colors.red.shade800.withValues(alpha: 0.9),
+            color: isDraw
+                ? Colors.blue.shade800.withValues(alpha: 0.9)
+                : isWin
+                    ? Colors.green.shade800.withValues(alpha: 0.9)
+                    : Colors.red.shade800.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isWin ? Colors.green.shade400 : Colors.red.shade400,
+              color: isDraw
+                  ? Colors.blue.shade400
+                  : isWin
+                      ? Colors.green.shade400
+                      : Colors.red.shade400,
               width: 2,
             ),
           ),
@@ -39,13 +45,17 @@ class CardBattleResultOverlay extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isWin ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+                isDraw
+                    ? Icons.handshake
+                    : isWin
+                        ? Icons.emoji_events
+                        : Icons.sentiment_dissatisfied,
                 size: 60,
-                color: isWin ? Colors.amber : Colors.white70,
+                color: isDraw ? Colors.blue.shade200 : (isWin ? Colors.amber : Colors.white70),
               ),
               const SizedBox(height: 16),
               Text(
-                isWin ? '你赢了！' : '你输了',
+                isDraw ? '平局' : (isWin ? '你赢了！' : '你输了'),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -91,7 +101,11 @@ class CardBattleResultOverlay extends ConsumerWidget {
                 label: const Text('再来一局'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
-                  foregroundColor: isWin ? Colors.green.shade800 : Colors.red.shade800,
+                  foregroundColor: isDraw
+                      ? Colors.blue.shade800
+                      : isWin
+                          ? Colors.green.shade800
+                          : Colors.red.shade800,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),

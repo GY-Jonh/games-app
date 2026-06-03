@@ -19,6 +19,8 @@ class CardBattleState {
 
   // 本轮桌面上已出的牌（谁出的 + 出的什么）
   final List<GameCard> tableCards;
+  final List<GameCard> playerTableCards;
+  final List<GameCard> opponentTableCards;
   final CardCombo? currentCombo; // 当前打出的牌型
   final bool lastPlayWasPass; // 上一手是否是"过"
 
@@ -48,6 +50,8 @@ class CardBattleState {
     required this.playerHand,
     required this.opponentHand,
     required this.tableCards,
+    required this.playerTableCards,
+    required this.opponentTableCards,
     this.currentCombo,
     required this.lastPlayWasPass,
     required this.playerCollected,
@@ -70,6 +74,8 @@ class CardBattleState {
         playerHand: [],
         opponentHand: [],
         tableCards: [],
+        playerTableCards: [],
+        opponentTableCards: [],
         lastPlayWasPass: false,
         playerCollected: [],
         opponentCollected: [],
@@ -95,6 +101,7 @@ class CardBattleState {
   bool get isGameOver =>
       status == CardBattleStatus.won ||
       status == CardBattleStatus.lost ||
+      status == CardBattleStatus.draw ||
       status == CardBattleStatus.disconnected;
 
   bool get isPlayerTurn =>
@@ -120,6 +127,8 @@ class CardBattleState {
     List<GameCard>? playerHand,
     List<GameCard>? opponentHand,
     List<GameCard>? tableCards,
+    List<GameCard>? playerTableCards,
+    List<GameCard>? opponentTableCards,
     CardCombo? currentCombo,
     bool clearCurrentCombo = false,
     bool? lastPlayWasPass,
@@ -143,6 +152,8 @@ class CardBattleState {
         playerHand: playerHand ?? this.playerHand,
         opponentHand: opponentHand ?? this.opponentHand,
         tableCards: tableCards ?? this.tableCards,
+        playerTableCards: playerTableCards ?? this.playerTableCards,
+        opponentTableCards: opponentTableCards ?? this.opponentTableCards,
         currentCombo: clearCurrentCombo ? null : (currentCombo ?? this.currentCombo),
         lastPlayWasPass: lastPlayWasPass ?? this.lastPlayWasPass,
         playerCollected: playerCollected ?? this.playerCollected,
@@ -167,6 +178,8 @@ class CardBattleState {
         'player_hand': playerHand.map((c) => c.toJson()).toList(),
         'opponent_hand': opponentHand.map((c) => c.toJson()).toList(),
         'table_cards': tableCards.map((c) => c.toJson()).toList(),
+        'player_table_cards': playerTableCards.map((c) => c.toJson()).toList(),
+        'opponent_table_cards': opponentTableCards.map((c) => c.toJson()).toList(),
         'player_collected': playerCollected.map((c) => c.toJson()).toList(),
         'opponent_collected': opponentCollected.map((c) => c.toJson()).toList(),
         'deck_remaining': deckRemaining,
@@ -180,6 +193,8 @@ class CardBattleState {
         'player_hand_count': playerHandCount,
         'opponent_hand_count': opponentHandCount,
         'result_message': resultMessage,
+        'self_name': selfName,
+        'opponent_name': opponentName,
       };
 
   factory CardBattleState.fromJson(Map<String, dynamic> json) {
@@ -197,6 +212,14 @@ class CardBattleState {
       tableCards: (json['table_cards'] as List)
           .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
           .toList(),
+      playerTableCards: (json['player_table_cards'] as List?)
+              ?.map((c) => GameCard.fromJson(c as Map<String, dynamic>))
+              .toList() ??
+          [],
+      opponentTableCards: (json['opponent_table_cards'] as List?)
+              ?.map((c) => GameCard.fromJson(c as Map<String, dynamic>))
+              .toList() ??
+          [],
       lastPlayWasPass: false,
       playerCollected: (json['player_collected'] as List)
           .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
@@ -208,8 +231,8 @@ class CardBattleState {
       turnPlayerIndex: json['turn_player_index'] as int,
       seed: 0,
       isSolo: false,
-      selfName: '',
-      opponentName: '',
+      selfName: json['self_name'] as String? ?? '',
+      opponentName: json['opponent_name'] as String? ?? '',
       resultMessage: res,
       roundNumber: json['round_number'] as int? ?? 1,
       lastRoundPassed: (json['last_round_passed'] as int?) == 1,

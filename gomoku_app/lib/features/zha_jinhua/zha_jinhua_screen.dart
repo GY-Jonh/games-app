@@ -22,7 +22,7 @@ class ZhaJinhuaScreen extends ConsumerStatefulWidget {
     super.key,
     required this.opponentName,
     required this.onSendMessage,
-    this.myPlayerIndex = 0,
+    required this.myPlayerIndex,
   });
 
   @override
@@ -279,6 +279,9 @@ class _ZhaJinhuaScreenState extends ConsumerState<ZhaJinhuaScreen> {
         payload: {'action': action},
         timestamp: DateTime.now().millisecondsSinceEpoch,
       ));
+      // 立即禁用按钮，防止重复点击
+      ref.read(zhaJinhuaStateProvider.notifier)
+          .setGuestPendingPhase(ZhaJinhuaPhase.opponentTurn);
     }
   }
 
@@ -309,6 +312,8 @@ class _ZhaJinhuaScreenState extends ConsumerState<ZhaJinhuaScreen> {
   // ========== 回合/游戏操作 ==========
 
   bool _canContinue(ZhaJinhuaState state) {
+    // PvP 中只有 Host 能发起新回合，Guest 等待 Host 发牌
+    if (!isSolo && widget.myPlayerIndex != 0) return false;
     return state.phase == ZhaJinhuaPhase.roundEnd &&
         state.playerChips > ZhaJinhuaConstants.anteAmount &&
         state.opponentChips > ZhaJinhuaConstants.anteAmount &&

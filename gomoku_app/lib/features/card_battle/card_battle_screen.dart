@@ -71,10 +71,10 @@ class CardBattleScreen extends ConsumerWidget {
                 // 对手手牌（背面朝上）
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: CardBattleStatusBar(opponentName: opponentName),
+                  child: const CardBattleStatusBar(),
                 ),
                 const SizedBox(height: 4),
-                CardBattleOpponentHand(),
+                CardBattleOpponentHand(opponentName: opponentName),
 
                 const Spacer(),
 

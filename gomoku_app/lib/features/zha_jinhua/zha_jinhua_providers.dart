@@ -404,6 +404,11 @@ class ZhaJinhuaStateNotifier extends StateNotifier<ZhaJinhuaState> {
 
   // ========== 回合切换 ==========
 
+  /// Guest 发送动作后立即设置等待阶段，防止重复点击.
+  void setGuestPendingPhase(ZhaJinhuaPhase phase) {
+    state = state.copyWith(phase: phase);
+  }
+
   /// 通知 PvP 对手状态变更.
   void _notifyAction(String action) {
     if (!state.isSolo && onActionNeeded != null) {
@@ -556,14 +561,12 @@ class ZhaJinhuaStateNotifier extends StateNotifier<ZhaJinhuaState> {
         state = state.copyWith(
           phase: ZhaJinhuaPhase.gameOver,
           status: ZhaJinhuaGameStatus.lost,
-          resultMessage: '筹码用完，游戏结束',
         );
       } else if (state.opponentChips <= 0) {
         _aiTimer?.cancel();
         state = state.copyWith(
           phase: ZhaJinhuaPhase.gameOver,
           status: ZhaJinhuaGameStatus.won,
-          resultMessage: '对手筹码用完，你赢了！🎉',
         );
       }
     }
@@ -719,6 +722,16 @@ class ZhaJinhuaStateNotifier extends StateNotifier<ZhaJinhuaState> {
     state = state.copyWith(
       status: ZhaJinhuaGameStatus.disconnected,
       resultMessage: '连接已断开',
+    );
+  }
+
+  /// 对方筹码不足，宿主通知游戏结束.
+  void handleChipOut(int winner) {
+    _aiTimer?.cancel();
+    state = state.copyWith(
+      status: winner == 0 ? ZhaJinhuaGameStatus.won : ZhaJinhuaGameStatus.lost,
+      phase: ZhaJinhuaPhase.gameOver,
+      resultMessage: winner == 0 ? '对手筹码不足，你赢了！' : '你筹码不足，游戏结束',
     );
   }
 
