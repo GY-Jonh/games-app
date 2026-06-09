@@ -29,6 +29,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
   CardBattleEngine? _engine;
   Timer? _aiTimer;
   Timer? _phaseTimer;
+  Timer? _opponentTimer;
 
   // PvP 回调（由 handler 设置）
   void Function(Map<String, dynamic> action)? onActionNeeded;
@@ -51,6 +52,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
   }) {
     _aiTimer?.cancel();
     _phaseTimer?.cancel();
+    _opponentTimer?.cancel();
     _engine = null;
 
     final firstPlayer = Random(seed).nextInt(2);
@@ -76,6 +78,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
   void rematch() {
     _aiTimer?.cancel();
     _phaseTimer?.cancel();
+    _opponentTimer?.cancel();
 
     if (state.isSolo) {
       final seed = generateSeed();
@@ -102,6 +105,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
           selectedCards.map((c) => c.toJson()).toList(),
         );
         state = state.copyWith(phase: CardBattlePhase.opponentTurn);
+        _resetOpponentTimer();
       }
       return;
     }
@@ -125,6 +129,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
       if (onGuestActionNeeded != null) {
         onGuestActionNeeded!('pass', null);
         state = state.copyWith(phase: CardBattlePhase.opponentTurn);
+        _resetOpponentTimer();
       }
       return;
     }
@@ -195,6 +200,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
       opponentName: state.opponentName,
     );
     _notifyAction(phase);
+    _resetOpponentTimer();
   }
 
  // ========== PvP 相关 ==========
@@ -205,6 +211,23 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
         'phase': phase.name,
         'turnPlayerIndex': _engine?.turnPlayerIndex,
       });
+    }
+  }
+
+  /// PvP: 等待对手超时定时器管理。
+  void _resetOpponentTimer() {
+    _opponentTimer?.cancel();
+    if (state.isSolo || state.isGameOver) return;
+    if (state.phase == CardBattlePhase.opponentTurn &&
+        state.status == CardBattleStatus.playing) {
+      _opponentTimer = Timer(
+        Duration(milliseconds: CardBattleConstants.opponentTimeoutMs),
+        () {
+          if (!state.isGameOver && state.status == CardBattleStatus.playing) {
+            handleConnectionLost();
+          }
+        },
+      );
     }
   }
 
@@ -232,6 +255,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
       selfName: state.selfName,
       opponentName: state.opponentName,
     );
+    _resetOpponentTimer();
   }
 
   /// PvP: Guest 接收 Host 发来的新回合初始状态。
@@ -267,12 +291,14 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
       roundNumber: 1,
       lastRoundPassed: false,
     );
+    _resetOpponentTimer();
   }
 
   /// 重置游戏（新一局）。
   void resetGame() {
     _aiTimer?.cancel();
     _phaseTimer?.cancel();
+    _opponentTimer?.cancel();
     _engine = null;
     onActionNeeded = null;
     state = CardBattleState.initial();
@@ -282,6 +308,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
 
   void handleConnectionLost() {
     _aiTimer?.cancel();
+    _opponentTimer?.cancel();
     _engine?.forceGameOver();
     state = _engine?.toSnapshot(
           phase: CardBattlePhase.gameOver,
@@ -299,6 +326,7 @@ class CardBattleStateNotifier extends StateNotifier<CardBattleState> {
   void dispose() {
     _aiTimer?.cancel();
     _phaseTimer?.cancel();
+    _opponentTimer?.cancel();
     super.dispose();
   }
 }

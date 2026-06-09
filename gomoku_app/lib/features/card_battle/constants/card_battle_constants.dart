@@ -53,4 +53,7 @@ class CardBattleConstants {
   // AI
   static const int aiDelayMinMs = 800;
   static const int aiDelayMaxMs = 1500;
+
+  // PvP 等待超时
+  static const int opponentTimeoutMs = 30000;
 }

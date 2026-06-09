@@ -62,7 +62,13 @@ class WebSocketClient {
 
   void send(NetworkMessage message) {
     if (_webSocket != null && _isConnected) {
-      _webSocket!.add(jsonEncode(message.toJson()));
+      try {
+        _webSocket!.add(jsonEncode(message.toJson()));
+      } catch (_) {
+        _isConnected = false;
+        _connectionStateController.add(false);
+        _pingTimer?.cancel();
+      }
     }
   }
 

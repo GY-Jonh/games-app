@@ -141,11 +141,14 @@ class CardBattleHandler extends GameHandler {
   /// Guest 接收 Host 发来的动作结果或回合更新.
   void _handleActionResult(NetworkMessage message) {
     final payload = message.payload;
-    // Guest 更新本地的引擎状态
     if (payload.containsKey('phase') && payload['phase'] != null) {
-      ref.read(cardBattleStateProvider.notifier).applyRemoteState(
-            CardBattleState.fromJson(payload),
-          );
+      try {
+        ref.read(cardBattleStateProvider.notifier).applyRemoteState(
+              CardBattleState.fromJson(payload),
+            );
+      } catch (e) {
+        // 防止反序列化异常导致整个消息管道中断
+      }
     }
   }
 
@@ -220,6 +223,7 @@ class CardBattleHandler extends GameHandler {
       'turn_player_index': s.turnPlayerIndex == 0 ? 1 : 0,
       'round_number': s.roundNumber,
       'last_round_passed': s.lastRoundPassed ? 1 : 0,
+      'last_play_was_pass': s.lastPlayWasPass ? 1 : 0,
       'player_hand_count': s.opponentHandCount,
       'opponent_hand_count': s.playerHandCount,
       'result_message': s.resultMessage,

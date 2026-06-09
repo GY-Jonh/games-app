@@ -82,10 +82,24 @@ class ConnectionManager {
 
   void send(NetworkMessage message) {
     if (_client != null && _client!.isConnected) {
-      _client!.send(message);
+      try {
+        _client!.send(message);
+      } catch (_) {
+        _onConnectionLost();
+      }
     } else {
       _server.send(message);
     }
+  }
+
+  void _onConnectionLost() {
+    _isConnected = false;
+    _messageController.add(NetworkMessage(
+      type: 'connection_lost',
+      senderId: deviceId,
+      payload: {},
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    ));
   }
 
   bool get isInitiator => _isInitiator;

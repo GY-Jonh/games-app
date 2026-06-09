@@ -220,7 +220,8 @@ class CardBattleState {
               ?.map((c) => GameCard.fromJson(c as Map<String, dynamic>))
               .toList() ??
           [],
-      lastPlayWasPass: false,
+      lastPlayWasPass: (json['last_play_was_pass'] as int?) == 1,
+      currentCombo: _parseCurrentCombo(json),
       playerCollected: (json['player_collected'] as List)
           .map((c) => GameCard.fromJson(c as Map<String, dynamic>))
           .toList(),
@@ -236,6 +237,19 @@ class CardBattleState {
       resultMessage: res,
       roundNumber: json['round_number'] as int? ?? 1,
       lastRoundPassed: (json['last_round_passed'] as int?) == 1,
+    );
+  }
+
+  static CardCombo? _parseCurrentCombo(Map<String, dynamic> json) {
+    final typeIndex = json['current_combo_type'] as int?;
+    final value = json['current_combo_value'] as int?;
+    final length = json['current_combo_length'] as int?;
+    if (typeIndex == null || value == null || length == null) return null;
+    return CardCombo(
+      type: ComboType.values[typeIndex],
+      cards: const [],
+      primaryValue: value,
+      length: length,
     );
   }
 }
